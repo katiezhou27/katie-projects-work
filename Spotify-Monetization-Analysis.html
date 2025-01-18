@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project 1 Deliverable hlb88 ez224 jl4424</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.anychart.com/releases/8.7.1/js/anychart-core.min.js"></script>
+    <script src="https://cdn.anychart.com/releases/8.7.1/js/anychart-heatmap.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        background-color: #f5f5f5;
+        color: #333;
+      }
+      .chart-container {
+        width: 100%;
+        margin: 0 auto;
+      }
+      svg {
+        width: 100%;
+        height: auto;
+      }
+      .axis-label {
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+      }
+      .title {
+        font-size: 20px;
+        font-weight: bold;
+      }
+
+      .legend {
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+      }
+      .axis text {
+        font-size: 12px;
+      }
+      .legend-rect {
+        width: 18px;
+        height: 18px;
+        stroke: #000;
+      }
+      svg .legend-text {
+        font-size: 12px;
+        text-anchor: start;
+        dominant-baseline: middle;
+        padding-left: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Subscription Rates by Usage Period -->
+    <div class="chart-container">
+      <h2 class="title">Subscription Rates by Usage Period</h2>
+      <svg id="subscriptionChart" width="800" height="500"></svg>
+    </div>
+
+    <!-- Music Recommendation Ratings Heatmap -->
+    <div class="chart-container">
+      <h2 class="title">Music Recommendation Ratings</h2>
+      <svg id="heat_map" width="800" height="500"></svg>
+    </div>
+
+    <!-- Music Genre vs Mood Horizontal Bar Chart -->
+    <div class="chart-container">
+      <h2 class="title">Music Genre vs Mood Horizontal Bar Chart</h2>
+      <div id="barchart"></div>
+    </div>
+
+    <!-- JavaScript for Subscription Rates by Usage Period -->
+    <script>
+      d3.csv("spotifyData.csv").then(function (data) {
+        let filteredData = data.filter((d) => d.sub_willingness === "Yes");
+        let groupedData = d3.groups(filteredData, (d) => d.usage_period);
+
+        let subscriptionData = groupedData.map((group) => {
+          let period = group[0];
+          let users = group[1];
+          let totalUsers = users.length;
+          let paidUsers = users.filter(
+            (d) => d.subscription_plan === "Premium (paid subscription)"
+          ).length;
+          let subscriptionRate = (paidUsers / totalUsers) * 100;
+
+          return {
+            usagePeriod: period,
+            subscription_percentage: subscriptionRate,
+          };
+        });
+
+        let usagePeriodOrder = [
+          "Less than 6 months",
+          "6 months to 1 year",
+          "1 year to 2 years",
+          "More than 2 years",
+        ];
+
+        let margin = { top: 40, right: 20, bottom: 60, left: 50 };
+        let width = 600 - margin.left - margin.right;
+        let height = 400 - margin.top - margin.bottom;
+
+        let x = d3
+          .scaleBand()
+          .domain(usagePeriodOrder)
+          .range([0, width])
+          .padding(0.2);
+
+        let y = d3
+          .scaleLinear()
+          .domain([
+            0,
+            d3.max(subscriptionData, (d) => d.subscription_percentage),
+          ])
+          .nice()
+          .range([height, 0]);
+
+        let svg = d3
+          .select("svg#subscriptionChart")
+          .attr("width", width + margin.left + margin.right)
+          .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+          .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        svg
+          .selectAll(".bar")
+          .data(subscriptionData)
+          .enter()
+          .append("rect")
+          .attr("class", "bar")
+          .attr("x", (d) => x(d.usagePeriod))
+          .attr("y", (d) => y(d.subscription_percentage))
+          .attr("width", x.bandwidth())
+          .attr("height", (d) => height - y(d.subscription_percentage))
+          .attr("fill", "#f9e79f");
+
+        svg
+          .append("g")
+          .attr("transform", `translate(0, ${height})`)
+          .call(d3.axisBottom(x))
+          .selectAll("text")
+          .attr("font-size", "12px");
+
+        svg.append("g").call(d3.axisLeft(y));
+
+        svg
+          .append("text")
+          .attr("class", "axis-label")
+          .attr("x", width / 2)
+          .attr("y", height + margin.bottom - 10)
+          .attr("text-anchor", "middle")
+          .text("Usage Period");
+
+        svg
+          .append("text")
+          .attr("class", "axis-label")
+          .attr("x", -height / 2)
+          .attr("y", -margin.left + 15)
+          .attr("transform", "rotate(-90)")
+          .attr("text-anchor", "middle")
+          .text("Subscription Percentage (%)");
+      });
+    </script>
+
+    <!-- JavaScript for Music Recommendation Ratings Heatmap -->
+    <script>
+      d3.csv("spotifyData.csv", d3.autoType).then((data) => {
+        data.forEach((d) => {
+          d["fav_music_genre"] = String(d["fav_music_genre"]);
+          d["music_time_slot"] = String(d["music_time_slot"]);
+          d["music_recc_rating"] = Number(d["music_recc_rating"]);
+        });
+
+        data = d3.rollup(
+          data,
+          (v) => d3.mean(v, (d) => d["music_recc_rating"]),
+          (d) => d["fav_music_genre"],
+          (d) => d["music_time_slot"]
+        );
+
+        data = Array.from(data, ([fav_music_genre, timeSlotMap]) =>
+          Array.from(timeSlotMap, ([music_time_slot, mean_rating]) => ({
+            fav_music_genre,
+            music_time_slot,
+            mean_rating,
+          }))
+        ).flat();
+
+        let svg = d3.select("svg#heat_map");
+        const margin = { top: 80, right: 45, bottom: 30, left: 100 };
+        const chartWidth = 600 - margin.left - margin.right;
+        const chartHeight = 450 - margin.top - margin.bottom;
+
+        let chartArea = svg
+          .append("g")
+          .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+        const musicGenreExtent = data.map((d) => d["fav_music_genre"]);
+        const xScale = d3
+          .scaleBand()
+          .domain(musicGenreExtent)
+          .range([0, chartWidth])
+          .padding(0.05);
+
+        const musicTimeSlotExtent = data.map((d) => d["music_time_slot"]);
+        const yScale = d3
+          .scaleBand()
+          .domain(musicTimeSlotExtent)
+          .range([chartHeight, 0])
+          .padding(0.05);
+
+        const musicReccRatingExtent = d3.extent(data, (d) => d["mean_rating"]);
+
+        let myColor = d3
+          .scaleLinear()
+          .domain([
+            musicReccRatingExtent[0],
+            (musicReccRatingExtent[0] + musicReccRatingExtent[1]) / 2,
+            musicReccRatingExtent[1],
+          ])
+          .range(["red", "yellow", "green"]);
+
+        chartArea
+          .selectAll()
+          .data(data)
+          .join("rect")
+          .attr("x", (d) => xScale(d["fav_music_genre"]))
+          .attr("y", (d) => yScale(d["music_time_slot"]))
+          .attr("rx", 4)
+          .attr("ry", 4)
+          .attr("width", xScale.bandwidth())
+          .attr("height", yScale.bandwidth())
+          .style("fill", (d) => myColor(d["mean_rating"]))
+          .style("stroke-width", 4)
+          .style("stroke", "none")
+          .style("opacity", 0.8);
+
+        chartArea
+          .selectAll()
+          .data(data)
+          .join("text")
+          .attr(
+            "x",
+            (d) => xScale(d["fav_music_genre"]) + xScale.bandwidth() / 2
+          )
+          .attr(
+            "y",
+            (d) => yScale(d["music_time_slot"]) + yScale.bandwidth() / 2
+          )
+          .attr("text-anchor", "middle")
+          .attr("dominant-baseline", "middle")
+          .style("fill", "black")
+          .style("font-size", "12px")
+          .text((d) => d3.format(".2f")(d["mean_rating"]));
+
+        chartArea
+          .append("text")
+          .attr("x", 0)
+          .attr("y", -50)
+          .attr("text-anchor", "left")
+          .style("font-size", "14px")
+          .style("fill", "grey")
+          .style("max-width", 400)
+          .text("Comparison across genres and listening times.");
+
+        chartArea
+          .append("g")
+          .attr("transform", `translate(0, ${chartHeight})`)
+          .call(d3.axisBottom(xScale))
+          .selectAll("text")
+          .attr("transform", "translate(0, 20)rotate(-25)");
+
+        chartArea.append("g").call(d3.axisLeft(yScale));
+
+        chartArea
+          .append("text")
+          .attr("transform", `translate(-60, ${chartHeight / 2}) rotate(-90)`)
+          .style("text-anchor", "middle")
+          .style("font-size", "14px")
+          .text("Music Listening Time Slot");
+      });
+    </script>
+
+    <!-- JavaScript for Music Genre vs Mood Horizontal Bar Chart with Legend -->
+    <script>
+      const csvFilePath = "spotifyData.csv";
+
+      d3.csv(csvFilePath)
+        .then(function (data) {
+          const totalUsers = data.length;
+          console.log("Total number of users:", totalUsers);
+
+          d3.select("body")
+            .append("div")
+            .attr("id", "user-count")
+            .style("font-family", "Arial")
+            .style("font-size", "16px")
+            .style("margin-top", "20px")
+            .text(`Total number of users: ${totalUsers}`);
+
+          const aggregatedData = d3.rollup(
+            data,
+            (v) => v.length,
+            (d) => d.fav_music_genre,
+            (d) => d.music_Influencial_mood
+          );
+
+          const genres = Array.from(
+            new Set(data.map((d) => d.fav_music_genre))
+          );
+          const moods = Array.from(
+            new Set(data.map((d) => d.music_Influencial_mood))
+          );
+
+          const containerWidth =
+            document.querySelector(".chart-container").clientWidth;
+          const width = Math.min(1200, containerWidth);
+          const height = 600;
+          const margin = { top: 60, right: 60, bottom: 300, left: 200 };
+
+          const svg = d3
+            .select("#barchart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+          const y0Scale = d3
+            .scaleBand()
+            .domain(genres)
+            .range([0, height])
+            .padding(0.4);
+
+          const y1Scale = d3
+            .scaleBand()
+            .domain(moods)
+            .range([0, y0Scale.bandwidth()])
+            .padding(0.05);
+
+          const xScale = d3
+            .scaleLog()
+            .domain([
+              1,
+              d3.max(
+                Array.from(aggregatedData.values(), (d) => d3.max(d.values()))
+              ),
+            ])
+            .range([0, width]);
+
+          const colorScale = d3
+            .scaleOrdinal()
+            .domain(moods)
+            .range([
+              "#1f77b4",
+              "#ff7f0e",
+              "#2ca02c",
+              "#d62728",
+              "#9467bd",
+              "#8c564b",
+              "#e377c2",
+              "#7f7f7f",
+              "#bcbd22",
+              "#17becf",
+              "#aec7e8",
+              "#ffbb78",
+              "#98df8a",
+              "#ff9896",
+              "#c5b0d5",
+              "#c49c94",
+              "#f7b6d2",
+              "#c7c7c7",
+              "#dbdb8d",
+              "#9edae5",
+            ]);
+
+          svg.append("g").call(d3.axisLeft(y0Scale));
+
+          svg
+            .append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(xScale).ticks(5, "~s"));
+
+          svg
+            .append("text")
+            .attr("x", width / 2)
+            .attr("y", height + 40)
+            .attr("text-anchor", "middle")
+            .style("font-family", "Arial")
+            .text("Number of Users");
+
+          const genreGroups = svg
+            .selectAll(".genre-group")
+            .data(genres)
+            .enter()
+            .append("g")
+            .attr("class", "genre-group")
+            .attr("transform", (d) => `translate(0,${y0Scale(d)})`);
+
+          genreGroups
+            .selectAll("rect")
+            .data((genre) =>
+              moods.map((mood) => ({
+                mood: mood,
+                count: aggregatedData.get(genre)?.get(mood) || 0,
+                genre: genre,
+              }))
+            )
+            .enter()
+            .append("rect")
+            .attr("class", "bar")
+            .attr("x", 0)
+            .attr("y", (d) => y1Scale(d.mood))
+            .attr("width", (d) => xScale(d.count))
+            .attr("height", y1Scale.bandwidth())
+            .attr("fill", (d) => colorScale(d.mood));
+
+          function wrapText(text, width) {
+            text.each(function () {
+              const text = d3.select(this),
+                words = text.text().split(/\s+/).reverse(),
+                lineHeight = 1.1,
+                y = text.attr("y"),
+                dy = parseFloat(text.attr("dy")) || 0;
+              let word,
+                line = [],
+                lineNumber = 0,
+                tspan = text
+                  .text(null)
+                  .append("tspan")
+                  .attr("x", 24)
+                  .attr("y", y)
+                  .attr("dy", `${dy}em`);
+
+              while ((word = words.pop())) {
+                line.push(word);
+                tspan.text(line.join(" "));
+                if (tspan.node().getComputedTextLength() > width) {
+                  line.pop();
+                  tspan.text(line.join(" "));
+                  line = [word];
+                  tspan = text
+                    .append("tspan")
+                    .attr("x", 24)
+                    .attr("y", y)
+                    .attr("dy", `${++lineNumber * lineHeight + dy}em`)
+                    .text(word);
+                }
+              }
+            });
+          }
+
+          const legend = svg
+            .selectAll(".legend")
+            .data(moods)
+            .enter()
+            .append("g")
+            .attr("class", "legend")
+            .attr(
+              "transform",
+              (d, i) =>
+                `translate(${(i % 9) * 135}, ${
+                  height + 80 + Math.floor(i / 9) * 60
+                })`
+            );
+
+          legend
+            .append("rect")
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("width", 18)
+            .attr("height", 18)
+            .style("fill", colorScale);
+
+          legend
+            .append("text")
+            .attr("x", 24)
+            .attr("y", 9)
+            .attr("dy", "0.35em")
+            .style("text-anchor", "start")
+            .text((d) => d)
+            .call(wrapText, 100);
+        })
+        .catch(function (error) {
+          console.error("Error loading the CSV file:", error);
+        });
+    </script>
+  </body>
+</html>
